@@ -1,0 +1,115 @@
+#import pglib.os as pgos
+from tmi.general.files import getfileobj
+from numpy import fromfile, array, ndarray
+
+"""
+Example:
+  import numpy as np
+  from matrix_chain import mc
+  D=np.arange(10).reshape(2,5).T.astype('double')
+  S=np.arange(10).reshape(2,5).T.astype('single')
+  I=np.arange(10).reshape(2,5).T.astype('int32')
+
+  mc.write('filename_py.mc', (D,S,I))
+  out=mc.read('filename_py.mc');
+  D,S,I=out
+
+Read/write multiple matrices to a file in binary format. The file-stream format is:
+M1,M2,M3,...
+
+Where each M stream consists of the following data:
+R,C,[data type specifier character]
+[d11]...[d1C]
+...
+[dR1]...[dRC]
+
+Valid data type specifiers (numpy character specifier convention):
+  f,d: 32-bit and 64-bit floating-point.
+  i,I: 32-bit signed and unsigned integers.
+  b,B: 8-bit signed and unsigned integers.
+"""
+
+# def getfile(name_or_obj, mode):
+#     """
+#     name_or_obj=obj: Returns the obj
+#     name_or_obj=filename: Opens the file in the specified mode, returns the object.
+#     """
+#     if isinstance(name_or_obj, basestring):
+#         return file(name_or_obj, mode)
+#     elif isinstance(name_or_obj, file):
+#         return name_or_obj
+#     else:
+#         raise Exception, 'Expected a file or filename, but got a %s.'%str(type(name_or_obj))
+
+class mc(object):
+    mc_dtypes=list('fdiIbB')
+    mc_htype='i'
+
+    @classmethod
+    def read(cls, inFile, count=-1):
+        oinFile,fn=getfileobj(inFile, 'r')
+
+        try:
+            # Read data.
+            cDim=fromfile(oinFile, dtype=cls.mc_htype, count=2)
+            outDat=[]
+            while cDim.size>0:
+                #
+                NRows,NCols=tuple(cDim)
+                NRows=int(NRows ); NCols=int(NCols)
+                Size=NCols * (NRows if NRows>0 else 1);
+
+                # Get current dtype.
+                dtype=fromfile(oinFile, 'c', count=1).tostring()
+                if dtype not in cls.mc_dtypes: raise Exception, 'Corrupt file: %s'%oinFile.name
+
+                # Get current data.
+                M=fromfile(oinFile, dtype=dtype, count=Size);
+                if M.size!=Size: raise Exception, 'Corrupt file: %s'%oinFile.name
+                M.shape=(NRows,NCols) if NRows>0 else (NCols,)
+                outDat.append(M);
+
+                # Break if count matrices have been read.
+                count-=1
+                if count==0: break;
+
+                # Get dims of next matrix.
+                cDim=fromfile(oinFile, dtype=cls.mc_htype, count=2)
+        finally:
+            # Close the file.
+            if not inFile is oinFile: oinFile.close();
+
+        return tuple(outDat)
+
+    @classmethod
+    def write(cls, inFile, dat):
+
+        # Check data.
+        if not isinstance(dat, tuple): dat=(dat,)
+        for c in dat: 
+            if not isinstance(c, ndarray): raise Exception, 'Expected numpy arrays as input.'
+            elif c.dtype.char not in cls.mc_dtypes: raise Exception, 'Invalid dtype ''%s''. Must be one of %s'%(c.dtype.char, cls.mc_dtypes)
+
+        # Open output file.
+        oinFile=open(inFile, 'w')
+
+        # Write the data.
+        try:
+            for c in dat:
+                # Get shape            
+                if len(c.shape)==1: cshape=[-1, c.shape[0]]
+                elif len(c.shape)==2: cshape=c.shape;
+                else: raise Exception, 'Invalid shape %s'%str(c.shape)
+                cshape=array(cshape).astype(cls.mc_htype)
+
+                # Get char spec.
+                char=array(c.dtype.char).astype('c')
+                #
+                cshape.tofile(oinFile);
+                char.tofile(oinFile);
+                c.tofile(oinFile);
+        finally:
+            # Close the file.
+            if not inFile is oinFile:
+                oinFile.close()
+

@@ -1,0 +1,22 @@
+
+Matrix chain file format reading / writing routines in Python / Matlab.
+
+The file format is:
+M1,M2,M3,...
+
+Where each Mk stream consists of 1) a header and 2) the data. 
+
+1) 
+The header consists of two ints and a char:
+R,C,[data type specifier character]
+
+2)
+The data format consist of RxC values (in row-major format) of the type specified by the data type specified character:
+[d11]...[d1C]
+...
+[dR1]...[dRC]
+
+Valid data type specifiers characters are (using the numpy character specifier convention):
+  f,d: 32-bit and 64-bit floating-point.
+  i,I: 32-bit signed and unsigned integers.
+  b,B: 8-bit signed and unsigned integers.
